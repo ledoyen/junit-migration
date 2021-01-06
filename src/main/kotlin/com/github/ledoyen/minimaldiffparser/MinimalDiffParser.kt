@@ -7,11 +7,17 @@ import com.github.javaparser.ast.Modifier
 import com.github.javaparser.ast.Node
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration
 import com.github.javaparser.ast.body.MethodDeclaration
+import com.github.javaparser.ast.expr.AnnotationExpr
+import com.github.javaparser.ast.expr.MemberValuePair
+import com.github.javaparser.ast.nodeTypes.NodeWithAnnotations
 import com.github.javaparser.ast.nodeTypes.NodeWithModifiers
+import com.github.javaparser.ast.stmt.BlockStmt
+import com.github.javaparser.ast.stmt.Statement
 import java.io.InputStream
 import java.nio.charset.StandardCharsets
 import java.util.*
 import kotlin.collections.ArrayList
+
 
 object MinimalDiffParser {
     fun parse(code: String) = MinimalDiffCompilationUnit(code, StaticJavaParser.parse(code))
@@ -31,6 +37,10 @@ interface MinimalDiffNode<out T : Node> {
         cu().changes.add(Deletion(n().begin.get(), end.plusCol(if (haveSpaceAfterToken) 2 else 1)))
         n().remove()
     }
+
+    fun replace(replacementFunction: (String, String) -> String) {
+        cu().changes.add(Replacement(n().begin.get(), n().end.get(), replacementFunction))
+    }
 }
 
 class MinimalDiffCompilationUnit(private var code: String, val cu: CompilationUnit) {
@@ -45,6 +55,8 @@ class MinimalDiffCompilationUnit(private var code: String, val cu: CompilationUn
     fun getChanges() = changes.toList()
 
     fun lineAt(pos: Position) = code.lines()[pos.line - 1]
+
+    private fun ordinalPosition(pos: Position) = code.lines().subList(0, pos.line - 1).map { l -> l.length + 1 }.sum() + pos.column - 1
 
     fun applyChanges(): String {
         var lineOffset = 0
@@ -66,15 +78,47 @@ class MinimalDiffCompilationUnit(private var code: String, val cu: CompilationUn
                     lineOffset -= (it.end.line - it.start.line)
                     code = lines.joinToString("\n")
                 }
+                is Replacement -> {
+                    val indent = lineAt(it.start).takeWhile { c -> c == ' ' }
+                    val ordinalStart = ordinalPosition(it.start)
+                    val ordinalEnd = ordinalPosition(it.end) + 1
+                    val statement = code.substring(ordinalStart, ordinalEnd)
+                    val replacement = it.replacementFunction(statement, indent)
+                    lineOffset += (replacement.lines().size - statement.lines().size)
+                    code = code.replaceRange(ordinalStart, ordinalEnd, replacement)
+                }
+                is Insertion -> {
+                    val parts = code.chunked(ordinalPosition(it.pos))
+                    code = parts[0] + it.content + parts.drop(1).joinToString("")
+                }
             }
 
         }
         return code
     }
+
+    fun addStaticImport(fullyQualifiedMethod: String) {
+        val staticImports = cu.imports.filter { i -> i.isStatic }
+        if (staticImports
+                .none { i -> i.nameAsString == fullyQualifiedMethod }
+        ) {
+            val (endOfLastImport, contentPrefix) = if (staticImports.isEmpty()) {
+                Pair(cu.imports.last().end.get(), "\n")
+            } else  {
+                Pair(staticImports.last().end.get(), "")
+            }
+            changes.add(Insertion(endOfLastImport.plusCol(1), "$contentPrefix\nimport static $fullyQualifiedMethod;"))
+            cu.addImport(fullyQualifiedMethod, true, false)
+        }
+    }
 }
 
 interface MinimalDiffNodeWithModifiers<T> : MinimalDiffNode<T> where T : NodeWithModifiers<out Node>, T : Node {
     fun getModifiers() = n().modifiers.map { MinimalDiffModifier(cu(), it) }
+}
+
+interface MinimalDiffNodeWithAnnotations<T> : MinimalDiffNode<T> where T : NodeWithAnnotations<out Node>, T : Node {
+    fun getAnnotationByName(name: String): Optional<MinimalDiffAnnotationExpr> = n().getAnnotationByName(name).map { MinimalDiffAnnotationExpr(cu(), it) }
 }
 
 class MinimalDiffClassOrInterfaceDeclaration(private val cu: MinimalDiffCompilationUnit, private val n: ClassOrInterfaceDeclaration) : MinimalDiffNodeWithModifiers<ClassOrInterfaceDeclaration> {
@@ -86,13 +130,15 @@ class MinimalDiffClassOrInterfaceDeclaration(private val cu: MinimalDiffCompilat
     }
 }
 
-class MinimalDiffMethodDeclaration(private val cu: MinimalDiffCompilationUnit, private val n: MethodDeclaration) : MinimalDiffNodeWithModifiers<MethodDeclaration> {
+class MinimalDiffMethodDeclaration(private val cu: MinimalDiffCompilationUnit, private val n: MethodDeclaration) : MinimalDiffNodeWithModifiers<MethodDeclaration>, MinimalDiffNodeWithAnnotations<MethodDeclaration> {
     override fun cu() = cu
     override fun n() = n
 
     fun accept(visitor: MinimalDiffVisitor) {
         visitor.visit(cu, this)
     }
+
+    fun getStatements() = n().findFirst(BlockStmt::class.java).get().statements.map { MinimalDiffStatement(cu(), it) }.toList()
 }
 
 class MinimalDiffModifier(private val cu: MinimalDiffCompilationUnit, private val n: Modifier) : MinimalDiffNode<Modifier> {
@@ -100,6 +146,35 @@ class MinimalDiffModifier(private val cu: MinimalDiffCompilationUnit, private va
     override fun n() = n
 
     fun getKeyword(): Modifier.Keyword = n.keyword
+}
+
+class MinimalDiffAnnotationExpr(private val cu: MinimalDiffCompilationUnit, private val n: AnnotationExpr) : MinimalDiffNode<AnnotationExpr> {
+    override fun cu() = cu
+    override fun n() = n
+
+    fun getMemberValuePairByName(name: String): Optional<MinimalDiffMemberValuePair> = Optional.ofNullable(n().findAll(MemberValuePair::class.java).find { mvp -> mvp.name.identifier == name }).map { MinimalDiffMemberValuePair(cu(), it, this) }
+}
+
+class MinimalDiffMemberValuePair(private val cu: MinimalDiffCompilationUnit, private val n: MemberValuePair, private val parent: MinimalDiffAnnotationExpr) : MinimalDiffNode<MemberValuePair> {
+    override fun cu() = cu
+    override fun n() = n
+
+    fun valueAsString() = n.value.toString()
+
+    override fun delete() {
+        if (parent.n().findAll(MemberValuePair::class.java).size == 1) {
+            n.removeForced()
+            parent.replace { _, _ -> "@${parent.n().name.asString()}" }
+        } else {
+            super.delete()
+            // TODO implement a value member removal among others
+        }
+    }
+}
+
+class MinimalDiffStatement(private val cu: MinimalDiffCompilationUnit, private val n: Statement) : MinimalDiffNode<Statement> {
+    override fun cu() = cu
+    override fun n() = n
 }
 
 interface MinimalDiffVisitor {
@@ -131,6 +206,8 @@ open class MinimalDiffVisitorAdapter : MinimalDiffVisitor {
 
 sealed class Change
 data class Deletion(val start: Position, val end: Position) : Change()
+data class Replacement(val start: Position, val end: Position, val replacementFunction: (String, String) -> String) : Change()
+data class Insertion(val pos: Position, val content: String) : Change()
 
 fun Position.plusCol(colOffset: Int): Position {
     return Position(this.line, this.column + colOffset)
