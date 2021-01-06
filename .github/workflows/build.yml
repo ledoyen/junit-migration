@@ -17,5 +17,8 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
+      - run: |
+         java -version
+         echo $JAVA_HOME
       - run: ./mvnw install
       - uses: codecov/codecov-action@v1
