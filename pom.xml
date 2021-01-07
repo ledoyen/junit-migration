@@ -18,6 +18,7 @@
         <kotlin.version>1.4.21-2</kotlin.version>
 
         <javaparser.version>3.15.6</javaparser.version>
+        <picocli.version>4.6.1</picocli.version>
 
         <junit.version>5.5.2</junit.version>
         <assertj.version>3.13.2</assertj.version>
@@ -37,6 +38,11 @@
             <groupId>com.github.javaparser</groupId>
             <artifactId>javaparser-core</artifactId>
             <version>${javaparser.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>info.picocli</groupId>
+            <artifactId>picocli</artifactId>
+            <version>${picocli.version}</version>
         </dependency>
 
         <dependency>
