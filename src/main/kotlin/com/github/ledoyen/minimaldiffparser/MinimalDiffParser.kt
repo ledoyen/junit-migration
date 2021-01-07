@@ -16,6 +16,8 @@ import com.github.javaparser.ast.stmt.Statement
 import java.io.InputStream
 import java.nio.charset.StandardCharsets
 import java.util.*
+import java.util.regex.Matcher
+import java.util.regex.Pattern
 import kotlin.collections.ArrayList
 
 
@@ -110,6 +112,21 @@ class MinimalDiffCompilationUnit(private var code: String, val cu: CompilationUn
             changes.add(Insertion(endOfLastImport.plusCol(1), "$contentPrefix\nimport static $fullyQualifiedMethod;"))
             cu.addImport(fullyQualifiedMethod, true, false)
         }
+    }
+
+    fun replaceTextByRegex(regex: String, replacement: String) = replaceTextByRegex(regex) { replacement }
+
+    fun replaceTextByRegex(regex: String, replacementFunction: (Matcher) -> String) {
+        val contentBuilder = StringBuffer()
+        val matcher = Pattern.compile(regex).matcher(code)
+
+        while (matcher.find()) {
+            val replacement: String = replacementFunction(matcher)
+            matcher.appendReplacement(contentBuilder, replacement)
+        }
+        matcher.appendTail(contentBuilder)
+
+        this.code = contentBuilder.toString()
     }
 }
 

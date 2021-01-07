@@ -3,6 +3,7 @@ package com.github.ledoyen.junitmigration
 import com.github.difflib.DiffUtils
 import com.github.ledoyen.junitmigration.transformation.ExpectedAnnotationParameter
 import com.github.ledoyen.junitmigration.transformation.RemovePublicModifier
+import com.github.ledoyen.junitmigration.transformation.ReplaceBasicAnnotations
 import com.github.ledoyen.minimaldiffparser.MinimalDiffParser
 import com.github.ledoyen.minimaldiffparser.MinimalDiffVisitor
 import org.assertj.core.api.Assertions.assertThat
@@ -36,7 +37,8 @@ class TransformationTests {
         @JvmStatic
         fun transformation_cases(): Stream<Arguments> = Stream.of(
             arguments("public_modifier", 3, RemovePublicModifier()),
-            arguments("expected_annotation_parameter", 3, ExpectedAnnotationParameter())
+            arguments("expected_annotation_parameter", 3, ExpectedAnnotationParameter()),
+            arguments("replace_basic_annotations", 0, ReplaceBasicAnnotations())
         )
     }
 
