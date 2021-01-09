@@ -20,18 +20,18 @@ fun main(args: Array<String>) {
     exitProcess(exitCode)
 }
 
+val transformations = listOf<MinimalDiffVisitor>(
+    RemovePublicModifier(),
+    ExpectedAnnotationParameter(),
+    ReplaceBasicAnnotations()
+)
+
 class Arguments : Runnable {
     @CommandLine.Parameters
     lateinit var rootPath: Path
 
     @CommandLine.Option(names = ["-v"], description = ["verbose, display the modified files"])
     var verbose: Boolean = false
-
-    private val visitors = listOf<MinimalDiffVisitor>(
-        RemovePublicModifier(),
-        ExpectedAnnotationParameter(),
-        ReplaceBasicAnnotations()
-    )
 
     @ExperimentalTime
     override fun run() {
@@ -57,7 +57,7 @@ class Arguments : Runnable {
 
     private fun transform(it: PathAndContent): Boolean {
         val compilationUnit = MinimalDiffParser.parse(it.content)
-        visitors.forEach { compilationUnit.accept(it) }
+        transformations.forEach { compilationUnit.accept(it) }
 
         val modifiedCode = compilationUnit.applyChanges()
 

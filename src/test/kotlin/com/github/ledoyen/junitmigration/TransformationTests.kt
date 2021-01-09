@@ -20,10 +20,10 @@ class TransformationTests {
 
     @ParameterizedTest
     @MethodSource
-    fun transformation_cases(transformationName: String, expectedPatchSize: Int, visitor: MinimalDiffVisitor) {
+    fun transformation_cases(transformationName: String, expectedPatchSize: Int, visitors: List<MinimalDiffVisitor>) {
         val compilationUnit = MinimalDiffParser.parse(streamOf("transformation/$transformationName/SampleTest.before.java"))
 
-        compilationUnit.accept(visitor)
+        visitors.forEach { compilationUnit.accept(it) }
 
         val changes = compilationUnit.getChanges()
         val modifiedCode = compilationUnit.applyChanges()
@@ -36,9 +36,11 @@ class TransformationTests {
     companion object {
         @JvmStatic
         fun transformation_cases(): Stream<Arguments> = Stream.of(
-            arguments("public_modifier", 3, RemovePublicModifier()),
-            arguments("expected_annotation_parameter", 3, ExpectedAnnotationParameter()),
-            arguments("replace_basic_annotations", 0, ReplaceBasicAnnotations())
+            arguments("public_modifier", 3, listOf(RemovePublicModifier())),
+            arguments("expected_annotation_parameter", 3, listOf(ExpectedAnnotationParameter())),
+            arguments("replace_basic_annotations", 0, listOf(ReplaceBasicAnnotations())),
+
+            arguments("all_in_one", 8, transformations),
         )
     }
 
