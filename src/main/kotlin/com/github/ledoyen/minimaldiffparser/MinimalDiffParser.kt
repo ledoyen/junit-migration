@@ -47,7 +47,7 @@ interface MinimalDiffNode<out T : Node> {
 
 class MinimalDiffCompilationUnit(private var code: String, val cu: CompilationUnit) {
 
-    internal val changes = ArrayList<Change>()
+    internal val changes = TreeSet<Change>()
 
     fun accept(visitor: MinimalDiffVisitor): MinimalDiffCompilationUnit {
         visitor.visit(this)
@@ -61,7 +61,6 @@ class MinimalDiffCompilationUnit(private var code: String, val cu: CompilationUn
     private fun ordinalPosition(pos: Position) = code.lines().subList(0, pos.line - 1).map { l -> l.length + 1 }.sum() + pos.column - 1
 
     fun applyChanges(): String {
-        var lineOffset = 0
         changes.forEach {
 
             when (it) {
@@ -69,15 +68,14 @@ class MinimalDiffCompilationUnit(private var code: String, val cu: CompilationUn
                     // TODO code.replace ?
                     val lines = ArrayList(code.lines())
                     if (it.start.line == it.end.line) {
-                        val lineIndex = it.start.line - 1 + lineOffset
+                        val lineIndex = it.start.line - 1
                         lines[lineIndex] = lines[lineIndex].removeRange(it.start.column - 1, it.end.column - 1)
                         if (lines[lineIndex].trim().isEmpty()) {
                             lines.removeAt(lineIndex)
-                            lineOffset--
                         }
+                    } else {
+                        TODO("multiline")
                     }
-                    // TODO multi line
-                    lineOffset -= (it.end.line - it.start.line)
                     code = lines.joinToString("\n")
                 }
                 is Replacement -> {
@@ -86,7 +84,6 @@ class MinimalDiffCompilationUnit(private var code: String, val cu: CompilationUn
                     val ordinalEnd = ordinalPosition(it.end) + 1
                     val statement = code.substring(ordinalStart, ordinalEnd)
                     val replacement = it.replacementFunction(statement, indent)
-                    lineOffset += (replacement.lines().size - statement.lines().size)
                     code = code.replaceRange(ordinalStart, ordinalEnd, replacement)
                 }
                 is Insertion -> {
@@ -106,7 +103,7 @@ class MinimalDiffCompilationUnit(private var code: String, val cu: CompilationUn
         ) {
             val (endOfLastImport, contentPrefix) = if (staticImports.isEmpty()) {
                 Pair(cu.imports.last().end.get(), "\n")
-            } else  {
+            } else {
                 Pair(staticImports.last().end.get(), "")
             }
             changes.add(Insertion(endOfLastImport.plusCol(1), "$contentPrefix\nimport static $fullyQualifiedMethod;"))
@@ -221,10 +218,13 @@ open class MinimalDiffVisitorAdapter : MinimalDiffVisitor {
 }
 
 
-sealed class Change
-data class Deletion(val start: Position, val end: Position) : Change()
-data class Replacement(val start: Position, val end: Position, val replacementFunction: (String, String) -> String) : Change()
-data class Insertion(val pos: Position, val content: String) : Change()
+sealed class Change(private val anchor: Position) : Comparable<Change> {
+    override fun compareTo(other: Change) = -anchor.compareTo(other.anchor)
+}
+
+data class Deletion(val start: Position, val end: Position) : Change(start)
+data class Replacement(val start: Position, val end: Position, val replacementFunction: (String, String) -> String) : Change(start)
+data class Insertion(val pos: Position, val content: String) : Change(pos)
 
 fun Position.plusCol(colOffset: Int): Position {
     return Position(this.line, this.column + colOffset)

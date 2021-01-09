@@ -31,11 +31,13 @@ So javaparser will only be used to read code, and the tool will write the change
 
 To do this I choose to store `Change` objects (`Deletion`, `Replacement` & `Addition`) with coordinates (line & column) instead of changing the AST.
 
-The modified code is produced by applying those changes.
-
 The tool is composed on two major parts :
 * `MinimalDiffParser`: a parser on top of javaparser that exposes a *wrapped-AST* that appears to be manipulable (but in fact creates `Change` objects)
 * the transformations: visitors of the *wrapped-AST* with simple purposes, such as replacing the `expected` member of the JUnit4 `@Test` by an [AssertJ](https://github.com/assertj/assertj-core) assertion
+
+The modified code is produced by applying these changes.
+
+In order for them not to interfere with each other, assuming that there is no overlap between them, changes are stored and applied in reversed positional order.
 
 ## Perspectives
 
