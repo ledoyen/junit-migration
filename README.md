@@ -5,6 +5,8 @@
 
 POC tool to migrate tests from JUnit4 to JUnit5 (Jupiter)
 
+A maintained alternative is [OpenRewrite](https://docs.openrewrite.org) (and more specifically [Migrate to JUnit 5 from JUnit 4](https://docs.openrewrite.org/tutorials/migrate-from-junit-4-to-junit-5)).
+
 ## :warning: Disclaimer
 Initially I developed a Java project to operate a migration of a lot of JUnit4 test classes for my current client (https://github.com/mirakl).
 
